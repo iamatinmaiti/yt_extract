@@ -1,7 +1,7 @@
 ## Youtube Data Extract Pipeline
 
 Pipeline and tooling for extracting YouTube trending data.  
-Current functionality focuses on capturing the YouTube Trending page as a PDF using headless Chrome via Selenium, with plans to evolve into a richer data pipeline and Content Idea App.
+Current functionality focuses on capturing the YouTube Trending search results as PNG screenshots using headless Chrome via Selenium, storing metadata in DuckDB, and providing a Streamlit UI for querying. Plans to evolve into a richer data pipeline with OCR extraction and Content Idea App.
 
 ---
 
@@ -23,30 +23,47 @@ High‑level objectives:
 
 ### Current Components
 
-- `app.py` – Python script that:
-  - Opens the YouTube Trending page in a headless Chrome browser via Selenium.
-  - Uses Chrome DevTools to print the page to a PDF file.
-  - Saves the PDF locally with a timestamp in the filename.
+- `tasks.py` – Python script that:
+  - Opens the YouTube Trending search results page in a headless Chrome browser via Selenium.
+  - Scrolls through the page to capture multiple viewports.
+  - Uses Chrome DevTools to capture the page as a PNG screenshot.
+  - Saves the PNG locally with a timestamp in the filename.
+
+- `dags/dag-yt_trending_pipeline.py` – Airflow DAG that orchestrates:
+  - Capturing trending snapshots.
+  - Storing metadata in DuckDB.
+  - Purging old snapshots after retention period.
+
+- `fetch_and_query_duckdb.py` – Script to fetch new snapshots and run queries on the DuckDB database.
+
+- `ui.py` – Streamlit app for querying the DuckDB database with custom SQL.
+
+- `Dockerfile` – Docker image for running Apache Superset for data visualization.
+
+- `start_airflow.sh` – Script to start Airflow standalone.
 
 - `templates/deployment.yaml` – Example Kubernetes manifest for a simple Nginx‑based “Hello World” web app.  
-  This is currently a template / example and not yet wired to the `yt_extract` script or a future UI.
+  This is currently a template / example and not yet wired to the project.
 
 - `requirements.txt` – Python dependencies used by the project:
   - `selenium` – Browser automation for headless Chrome.
-  - `apache-airflow` – (Planned) orchestration layer for future data pipelines.
+  - `duckdb` – Embedded database for storing metadata.
+  - `streamlit` – UI for querying data.
+  - `apache-airflow` – Orchestration for data pipelines.
+  - `pytesseract` – (Planned) OCR for extracting text from screenshots.
+  - `pypdf` – (Planned) PDF processing.
 
 ---
 
 ### Getting Started
 
 #### Prerequisites
-v
+
 - Python 3.10+ installed.
-- Google Chrome installed.
-- Matching `chromedriver` binary installed locally.
+- Google Chrome installed (required for Selenium to capture screenshots).
 - A Linux environment (this repo is currently developed on Ubuntu).
 
-#### Install Python dependnencies
+#### Install Python dependencies
 
 From the project root:
 
@@ -64,46 +81,60 @@ source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
-Then run the script:
+#### Running the Pipeline
+
+To run a single snapshot capture:
 
 ```bash
-python app.py
-# or, if you used uv:
-uv run app.py
+python tasks.py
 ```
+
+This will generate a PNG screenshot in the `data/` directory.
+
+To run the Airflow DAG:
+
+```bash
+./start_airflow.sh
+```
+
+Then access Airflow UI at http://localhost:8080 to trigger the DAG.
+
+#### Running the Streamlit UI
+
+```bash
+streamlit run ui.py
+```
+
+Access at http://localhost:8501 to query the DuckDB database.
+
+#### Running Superset
+
+Using Docker:
+
+```bash
+docker build -t yt-superset .
+docker run -p 8088:8088 yt-superset
+```
+
+Access Superset at http://localhost:8088 (admin/admin).
 
 ---
 
 ### Configuring ChromeDriver
 
-In `app.py`, the `CHROMEDRIVER_PATH` constant points to the local ChromeDriver binary:
-
-- Ensure the path matches your local installation.
-- You can download ChromeDriver that matches your Chrome version from the official ChromeDriver site.
-
-Example:
-
-- If you install `chromedriver` to `/usr/local/bin/chromedriver`, update:
-  - `CHROMEDRIVER_PATH = "/usr/local/bin/chromedriver"`
+Selenium Manager automatically handles ChromeDriver download and matching versions. No manual configuration needed.
 
 ---
 
-### Running the script
+### Data Storage
 
-From the project root:
+Metadata is stored in `data/yt_trending.duckdb` with the following table:
 
-```bash
-python app.py
-```
-
-What happens:
-
-- A headless Chrome browser is started via Selenium.
-- The browser navigates to `https://www.youtube.com/feed/trending`.
-- After a short delay to allow content to load, Chrome DevTools prints the page to a PDF.
-- The PDF is written to the current directory with a name like:
-  - `output_2026-02-25T12:34:56.789012.pdf`
-- The script prints the path to the generated file.
+- `trending_snapshots`:
+  - `snapshot_timestamp` (TIMESTAMPTZ): When the record was stored.
+  - `file_mtime` (TIMESTAMPTZ): File modification time.
+  - `file_path` (TEXT): Path to the PNG file.
+  - `file_size_bytes` (BIGINT): File size in bytes.
 
 ---
 
@@ -121,10 +152,7 @@ Usage:
 kubectl apply -f templates/deployment.yaml
 ```
 
-You can use this as a starting point for:
-
-- Deploying a future Streamlit / web UI for this project.
-- Experimenting with Kubernetes deployment basics.
+You can use this as a starting point for deploying the Streamlit UI or Superset.
 
 ---
 
@@ -132,14 +160,14 @@ You can use this as a starting point for:
 
 Planned enhancements for `yt_extract`:
 
-- Use Airflow DAGs to schedule regular data extraction from YouTube APIs.
-- Store structured video metadata in a queryable store (e.g., DuckDB, Postgres).
-- Build transformations and metrics to power content‑idea insights.
-- Replace the Nginx demo deployment with an actual app (API or Streamlit UI).
+- Integrate OCR (Tesseract) to extract video metadata from PNG screenshots.
+- Store structured video data in DuckDB/Postgres.
+- Build transformations and metrics for content insights.
+- Expand UI with visualizations and content idea suggestions.
+- Add more data sources (YouTube API, etc.).
 
 ---
 
 ### License
 
 Add your preferred license here (e.g., MIT, Apache 2.0).
-
