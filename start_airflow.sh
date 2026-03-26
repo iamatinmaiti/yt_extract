@@ -1,3 +1,3 @@
-export AIRFLOW_HOME="/home/narutouzumaki/CursorProjects/yt_extract"
-export AIRFLOW__CORE__DAGS_FOLDER="/home/narutouzumaki/CursorProjects/yt_extract/dags"
+export AIRFLOW_HOME="/Users/atinmaiti/Documents/Github/yt_extract/airflow"
+export AIRFLOW__CORE__DAGS_FOLDER="/Users/atinmaiti/Documents/Github/yt_extract/dags"
 airflow standalone

@@ -3,11 +3,9 @@
 /.venv/
 /data/
 /logs/
+/airflow/
 
 /dags/__pycache__/
 /plugins/__pycache__/
 /logs/__pycache__/
 /__pycache__/
-
-airflow*
-simple_auth_manager_passwords.json.generated

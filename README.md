@@ -81,6 +81,18 @@ source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
+#### Install Airflow
+
+To install Airflow with version constraints for compatibility:
+
+```bash
+./install_airflow.sh
+```
+
+If you encounter an error like "Error while accessing remote requirements file" due to an unsupported Python version (e.g., Python 3.14), edit `install_airflow.sh` and set `PYTHON_VERSION` manually to a supported version such as "3.13".
+
+Supported Python versions for Airflow 3.1.3 are 3.10, 3.11, 3.12, and 3.13.
+
 #### Running the Pipeline
 
 To run a single snapshot capture:
