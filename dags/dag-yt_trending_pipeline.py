@@ -37,7 +37,7 @@ def create_trending_snapshot(**_: dict) -> str:
     Returns:
         The path to the generated image file.
     """
-    from tasks import create_trending_snapshot
+    from project.tasks import create_trending_snapshot
     return create_trending_snapshot()
 
 

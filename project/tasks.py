@@ -19,7 +19,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
-# YouTube Trending search results endpoint to snapshot.
+# YouTube Trending search results endpoint to snapshots.
 TARGET_URL: Final[str] = "https://www.youtube.com/results?search_query=trending"
 
 
