@@ -38,6 +38,7 @@ def create_trending_snapshot(**_: dict) -> str:
         The path to the generated image file.
     """
     from project.tasks import create_trending_snapshot
+
     return create_trending_snapshot()
 
 
@@ -72,16 +73,14 @@ def store_snapshot_metadata(ti, **_: dict) -> None:
 
     conn = duckdb.connect(str(DUCKDB_PATH))
     try:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS trending_snapshots (
                 snapshot_timestamp TIMESTAMPTZ,
                 file_mtime TIMESTAMPTZ,
                 file_path TEXT,
                 file_size_bytes BIGINT
             )
-            """
-        )
+            """)
         conn.execute(
             """
             INSERT INTO trending_snapshots (
@@ -160,9 +159,7 @@ def extract_trending_data_with_llm(ti, **_: dict) -> None:
         raise FileNotFoundError(f"Generated snapshot not found at {snapshot_path_obj}")
 
     if not YT_EXTRACT_PROMPT_PATH.exists():
-        raise FileNotFoundError(
-            f"Prompt file not found at {YT_EXTRACT_PROMPT_PATH}"
-        )
+        raise FileNotFoundError(f"Prompt file not found at {YT_EXTRACT_PROMPT_PATH}")
 
     with YT_EXTRACT_PROMPT_PATH.open("r", encoding="utf-8") as f:
         prompt_instructions = f.read()
@@ -189,7 +186,9 @@ def extract_trending_data_with_llm(ti, **_: dict) -> None:
         # Use a standard mode for OCR.
         image = image.convert("L")
     except Exception as exc:
-        raise RuntimeError(f"Failed to open snapshot image at {snapshot_path_obj}") from exc
+        raise RuntimeError(
+            f"Failed to open snapshot image at {snapshot_path_obj}"
+        ) from exc
 
     ocr_text = pytesseract.image_to_string(image) or ""
 
@@ -247,8 +246,7 @@ def extract_trending_data_with_llm(ti, **_: dict) -> None:
 
     conn = duckdb.connect(str(DUCKDB_PATH))
     try:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS trending_videos (
                 uuid TEXT,
                 rec_insert_ts TIMESTAMPTZ,
@@ -274,8 +272,7 @@ def extract_trending_data_with_llm(ti, **_: dict) -> None:
                 repeated_listing BOOLEAN,
                 additional_metadata TEXT
             )
-            """
-        )
+            """)
 
         insert_sql = """
             INSERT INTO trending_videos (
@@ -420,7 +417,6 @@ with DAG(
     stop = EmptyOperator(
         task_id="stop",
     )
-
 
     start >> create_snapshot >> save_metadata >> extract_data >> stop
     start >> purge_old_snapshots >> stop

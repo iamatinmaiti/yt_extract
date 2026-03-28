@@ -12,7 +12,6 @@ Usage:
 """
 
 from __future__ import annotations
-
 import argparse
 import sys
 from datetime import datetime, timezone
@@ -63,16 +62,14 @@ def fetch_snapshot() -> str | None:
 
     conn = duckdb.connect(str(DUCKDB_PATH))
     try:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS trending_snapshots (
                 snapshot_timestamp TIMESTAMPTZ,
                 file_mtime TIMESTAMPTZ,
                 file_path TEXT,
                 file_size_bytes BIGINT
             )
-            """
-        )
+            """)
         conn.execute(
             """
             INSERT INTO trending_snapshots (
@@ -233,7 +230,3 @@ def main() -> None:
             print(fmt.format(*[str(x)[:50] for x in row]))
     finally:
         conn.close()
-
-
-if __name__ == "__main__":
-    main()

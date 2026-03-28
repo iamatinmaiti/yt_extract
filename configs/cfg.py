@@ -159,13 +159,14 @@ ORDER BY table_catalog, table_schema, table_name;"""
 # HELPER FUNCTIONS
 # ============================================================================
 
+
 def get_snapshot_output_path(timestamp: datetime | None = None) -> Path:
     """
     Generate a snapshot output file path.
-    
+
     Args:
         timestamp: Optional timestamp for naming. If None, uses current time.
-    
+
     Returns:
         Path object for the snapshot file.
     """
@@ -178,10 +179,10 @@ def get_snapshot_output_path(timestamp: datetime | None = None) -> Path:
 def get_project_data_path(filename: str) -> Path:
     """
     Get a path within the project data directory.
-    
+
     Args:
         filename: Name of the file.
-    
+
     Returns:
         Full path to the file in the data directory.
     """
@@ -191,7 +192,7 @@ def get_project_data_path(filename: str) -> Path:
 def validate_environment() -> dict[str, bool]:
     """
     Validate that all required environment variables and paths exist.
-    
+
     Returns:
         Dictionary with validation results.
     """
