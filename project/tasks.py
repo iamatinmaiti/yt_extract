@@ -8,9 +8,10 @@ for a broader YouTube data extraction and analysis pipeline.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Final
+import uuid
 import numpy as np
 from playwright.sync_api import sync_playwright, ViewportSize
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 TARGET_URL: Final[str] = "https://www.youtube.com/results?search_query=trending"
 BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "datalake"
-DUCKDB_PATH = DATA_DIR / "yt_trending.duckdb"
+WAREHOUSE_DIR = BASE_DIR / "warehouse"
 
 
 def create_trending_snapshot(target_url: str = TARGET_URL) -> str:
@@ -114,3 +115,218 @@ def create_trending_snapshot(target_url: str = TARGET_URL) -> str:
 
     logger.info("Trending snapshot extraction completed")
     return str(output_file)
+
+
+def store_snapshot_metadata(snapshot_path: str) -> None:
+    """
+    Persist metadata about the generated snapshot file into DuckDB.
+
+    Args:
+        snapshot_path: Path to the snapshot file
+        
+    Data model (table: trending_snapshots):
+      - snapshot_timestamp (TIMESTAMP): when this pipeline run stored the record
+      - file_mtime        (TIMESTAMP): filesystem modified time of the snapshot
+      - file_path         (TEXT): absolute path to the snapshot file
+      - file_size_bytes   (BIGINT): size of the snapshot in bytes
+    """
+    import duckdb
+
+    snapshot_path_obj = Path(snapshot_path)
+    if not snapshot_path_obj.is_absolute():
+        snapshot_path_obj = (BASE_DIR / snapshot_path_obj).resolve()
+
+    if not snapshot_path_obj.exists():
+        raise FileNotFoundError(f"Generated snapshot not found at {snapshot_path_obj}")
+
+    file_stats = snapshot_path_obj.stat()
+    snapshot_timestamp = datetime.now(timezone.utc)
+    file_mtime = datetime.fromtimestamp(file_stats.st_mtime, tz=timezone.utc)
+    file_size_bytes = file_stats.st_size
+
+    WAREHOUSE_DIR.mkdir(parents=True, exist_ok=True)
+    duckdb_path = WAREHOUSE_DIR / "yt_trending.duckdb"
+
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS trending_snapshots (
+                snapshot_timestamp TIMESTAMPTZ,
+                file_mtime TIMESTAMPTZ,
+                file_path TEXT,
+                file_size_bytes BIGINT
+            )
+            """)
+        conn.execute(
+            """
+            INSERT INTO trending_snapshots (
+                snapshot_timestamp,
+                file_mtime,
+                file_path,
+                file_size_bytes
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            [snapshot_timestamp, file_mtime, str(snapshot_path_obj), file_size_bytes],
+        )
+        logger.info(f"Stored metadata for snapshot: {snapshot_path_obj}")
+    finally:
+        conn.close()
+
+
+def load_extracted_data_from_datalake() -> None:
+    """
+    Load previously extracted YouTube trending data from JSON files in the datalake
+    and store into DuckDB.
+    
+    This function looks for the most recent output_*.json file in the datalake
+    directory and loads its contents into the trending_videos table.
+    
+    Expected JSON structure (array of objects):
+    [
+        {
+            "title": str,
+            "channel": str,
+            "views": str (e.g., "12M views"),
+            "upload_time": str,
+            "video_url": str,
+            "channel_url": str,
+            "thumbnail_url": str,
+            "duration": str,
+            ... (optional additional fields)
+        }
+    ]
+    """
+    import duckdb
+    
+    # Find the most recent output_*.json file
+    json_files = sorted(DATA_DIR.glob("output_*.json"), reverse=True)
+    
+    if not json_files:
+        logger.info("No extracted data files found in datalake. Skipping data load.")
+        return
+    
+    latest_json_file = json_files[0]
+    logger.info(f"Loading extracted data from: {latest_json_file}")
+    
+    # Read the JSON file
+    with open(latest_json_file, "r", encoding="utf-8") as f:
+        videos = json.load(f)
+    
+    if not isinstance(videos, list):
+        raise ValueError(f"Expected JSON array in {latest_json_file}, got {type(videos)}")
+    
+    rec_insert_ts = datetime.now(timezone.utc)
+    extraction_date = datetime.now(timezone.utc).date()
+    
+    WAREHOUSE_DIR.mkdir(parents=True, exist_ok=True)
+    duckdb_path = WAREHOUSE_DIR / "yt_trending.duckdb"
+
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS trending_videos (
+                uuid TEXT PRIMARY KEY,
+                rec_insert_ts TIMESTAMPTZ,
+                extraction_date DATE,
+                video_title TEXT,
+                video_url TEXT,
+                video_id TEXT,
+                channel_name TEXT,
+                channel_url TEXT,
+                views_text TEXT,
+                upload_time_text TEXT,
+                duration TEXT,
+                thumbnail_url TEXT,
+                raw_variant JSON
+            )
+            """)
+
+        insert_sql = """
+            INSERT INTO trending_videos (
+                uuid,
+                rec_insert_ts,
+                extraction_date,
+                video_title,
+                video_url,
+                video_id,
+                channel_name,
+                channel_url,
+                views_text,
+                upload_time_text,
+                duration,
+                thumbnail_url,
+                raw_variant
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        for video in videos:
+            row_uuid = str(uuid.uuid4())
+            
+            # Extract video_id from video_url (e.g., "/shorts/2sokLXhqRFQ" -> "2sokLXhqRFQ")
+            video_id = None
+            video_url = video.get("video_url", "")
+            if video_url:
+                video_id = video_url.split("/")[-1].split("?")[0]
+            
+            conn.execute(
+                insert_sql,
+                [
+                    row_uuid,
+                    rec_insert_ts,
+                    extraction_date,
+                    video.get("title"),
+                    video.get("video_url"),
+                    video_id,
+                    video.get("channel"),
+                    video.get("channel_url"),
+                    video.get("views"),
+                    video.get("upload_time"),
+                    video.get("duration"),
+                    video.get("thumbnail_url"),
+                    json.dumps(video),
+                ],
+            )
+        
+        logger.info(f"Successfully loaded {len(videos)} videos into DuckDB")
+    finally:
+        conn.close()
+
+
+def purge_old_files(retention_days: int = 30) -> None:
+    """
+    Remove snapshot files and DuckDB records older than retention_days.
+    
+    Args:
+        retention_days: Number of days to retain files (default: 30)
+    """
+    import duckdb
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+    # Delete old snapshot JSON files from datalake.
+    for path in DATA_DIR.glob("output_*.json"):
+        if not path.is_file():
+            continue
+        file_mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        if file_mtime < cutoff:
+            path.unlink()
+            logger.info(f"Deleted old snapshot: {path}")
+
+    # Delete old metadata rows from DuckDB.
+    duckdb_path = WAREHOUSE_DIR / "yt_trending.duckdb"
+    
+    if duckdb_path.exists():
+        conn = duckdb.connect(str(duckdb_path))
+        try:
+            conn.execute(
+                """
+                DELETE FROM trending_snapshots
+                WHERE snapshot_timestamp < ?
+                """,
+                [cutoff],
+            )
+            logger.info("Purged old snapshot metadata from DuckDB")
+        finally:
+            conn.close()
