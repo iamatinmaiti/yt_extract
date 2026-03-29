@@ -5,6 +5,7 @@
 /datalake/
 /logs/
 /airflow/
+/warehouse/
 
 /dags/__pycache__/
 /plugins/__pycache__/
