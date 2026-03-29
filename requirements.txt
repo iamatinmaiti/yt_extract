@@ -5,7 +5,7 @@ pandas==3.0.1
 pypdf==6.9.2
 pytesseract==0.3.13
 Pillow>=11.0.0
-apache-airflow==3.0.6
+apache-airflow>=3.1.0
 
 # this is for superset
 duckdb-engine==0.17.0
